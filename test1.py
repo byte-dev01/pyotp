@@ -160,3 +160,15 @@ But we have:
 #               hmac.new(secret_bytes, counter_bytes, sha1)
 #                   20-byte hash → truncate → "482193"
 #
+
+"""
+Summary: What Makes TOTP Secure
+Time (public)  +  Secret (private)  →  HMAC-SHA1  →  Code
+     │                  │                   │
+     │                  │                   └── One-way function
+     │                  └── Only you and server know this
+     └── Everyone knows this
+
+The attacker knows the time, but without the secret, they can't compute the HMAC.
+"""
+
