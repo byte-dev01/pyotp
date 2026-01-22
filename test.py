@@ -11,8 +11,20 @@ from warnings import warn
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 import pyotp  # noqa
-
-
+# sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
+# __file__
+# Path to current script: C:\Users\rache\...\pyotp\test.py
+# os.path.dirname(__file__)
+# Parent folder: C:\Users\rache\...\pyotp\
+# os.path.join(..., "src")
+# Add "src": C:\Users\rache\...\pyotp\src
+# sys.path.insert(0, ...)
+# Put this at the front of Python's search path
+# By inserting at position 0, this path is searched first, before
+# everything else.
+# Therefore, without this line, import pyotp may loads 
+# older version, but with this line, it will always 
+# go to ./src/pyotp
 
 
 
@@ -31,21 +43,25 @@ class HOTPExampleValuesFromTheRFC(unittest.TestCase):
         self.assertEqual(hotp.at(7), "162583")
         self.assertEqual(hotp.at(8), "399871")
         self.assertEqual(hotp.at(9), "520489")
-
+        # Test counter-based OTP against official RFC 4226 test vectors
+        # RFC defines the exact outputs.
+    
     def test_invalid_input(self):
         hotp = pyotp.HOTP("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ")
         with self.assertRaises(ValueError):
             hotp.at(-1)
-
+        # Negative counters should fail
     def test_verify_otp_reuse(self):
         hotp = pyotp.HOTP("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ")
         self.assertTrue(hotp.verify("520489", 9))
         self.assertFalse(hotp.verify("520489", 10))
         self.assertFalse(hotp.verify("520489", 10))
-
+        # Correct counter -> True 
+        # Wrong counter, false
+        
     def test_provisioning_uri(self):
         hotp = pyotp.HOTP("wrn3pqx5uqxqvnqr", name="mark@percival")
-
+        
         url = urlparse(hotp.provisioning_uri())
         self.assertEqual(url.scheme, "otpauth")
         self.assertEqual(url.netloc, "hotp")
@@ -104,6 +120,7 @@ class HOTPExampleValuesFromTheRFC(unittest.TestCase):
         self.assertEqual(code.provisioning_uri(), "otpauth://totp/Secret?secret=S46SQCPPTCNPROMHWYBDCTBZXV")
         code.verify("123456")
         self.assertEqual(code.provisioning_uri(), "otpauth://totp/Secret?secret=S46SQCPPTCNPROMHWYBDCTBZXV")
+        #URI generation format is correct for QR codes.
 
     def test_other_secret(self):
         hotp = pyotp.HOTP("N3OVNIBRERIO5OHGVCMDGS4V4RJ3AUZOUN34J6FRM4P6JIFCG3ZA")
@@ -115,6 +132,7 @@ class HOTPExampleValuesFromTheRFC(unittest.TestCase):
 
 
 class TOTPExampleValuesFromTheRFC(unittest.TestCase):
+    # Testing time-based OTP gainst RFC 6238
     RFC_VALUES = {
         (hashlib.sha1, b"12345678901234567890"): (
             (59, "94287082"),
@@ -321,14 +339,15 @@ class StringComparisonTest(CompareDigestTest):
     def test_unicode_equal(self):
         self.assertTrue(self.method("ěšč45", "ěšč45"))
 
-
+# Tests peeking at adjacent codes
+# Can get code for next / previous time window
 class CounterOffsetTest(unittest.TestCase):
     def test_counter_offset(self):
         totp = pyotp.TOTP("ABCDEFGH")
         self.assertEqual(totp.at(200), "028307")
         self.assertTrue(totp.at(200, 1), "681610")
-
-
+# Tests tolerance for clock shift
+# Tests: valid_window = 1 accepts above or lower 1 time window
 class ValidWindowTest(unittest.TestCase):
     def test_valid_window(self):
         totp = pyotp.TOTP("ABCDEFGH")
@@ -336,8 +355,21 @@ class ValidWindowTest(unittest.TestCase):
         self.assertTrue(totp.verify("028307", 200, 1))
         self.assertTrue(totp.verify("681610", 200, 1))
         self.assertFalse(totp.verify("195979", 200, 1))
+# The Key: i = what self.at(for_time, i) does
+#   Time = 200 seconds
+# Interval = 30 seconds
+# timecode(200) = 200 // 30 = 6
 
+# self.at(200, -1) → generate_otp(6 + (-1)) → generate_otp(5) → "451564"
+# self.at(200,  0) → generate_otp(6 +   0)  → generate_otp(6) → "028307"
+# self.at(200, +1) → generate_otp(6 +   1)  → generate_otp(7) → "681610"
 
+# totp.verify("451564", 200, 1)  # User's clock is 30s behind → Still valid!
+# totp.verify("028307", 200, 1)  # User's clock is correct    → Valid
+# totp.verify("681610", 200, 1)  # User's clock is 30s ahead  → Still valid!
+# totp.verify("195979", 200, 1)  # Code from counter 4 or 8   → Too far, rejected
+
+#rejects weak functions
 class DigestFunctionTest(unittest.TestCase):
     def test_md5(self):
         with self.assertRaises(ValueError) as cm:
@@ -353,7 +385,7 @@ class DigestFunctionTest(unittest.TestCase):
             "selected digest function must generate digest size greater than or equals to 18 bytes", str(cm.exception)
         )
 
-
+# Tests URI parsing and validation
 class ParseUriTest(unittest.TestCase):
     def test_invalids(self):
         with self.assertRaises(ValueError) as cm:
@@ -386,7 +418,7 @@ class ParseUriTest(unittest.TestCase):
 
         otp = pyotp.parse_uri("otpauth://totp/Steam:?secret=SOME_SECRET")
         self.assertNotEqual(type(otp), pyotp.contrib.Steam)
-
+        # All validation in parse_uri actually works
     @unittest.skipIf(sys.version_info < (3, 6), "Skipping test that requires deterministic dict key enumeration")
     def test_algorithms(self):
         otp = pyotp.parse_uri("otpauth://totp?algorithm=SHA1&secret=GEZDGNBV&algorithm=SHA1")
@@ -461,7 +493,10 @@ class ParseUriTest(unittest.TestCase):
 
         pyotp.parse_uri("otpauth://totp?secret=abc&image=foobar")
 
-
+# A utility to freeze time for testing.
+# TOTP depends on current time. How do you test it?
+# BAD - this test might fail depending on when you run it!
+# The solution is to freeze time.
 class Timecop(object):
     """
     Half-assed clone of timecop.rb, just enough to pass our tests.
@@ -469,23 +504,36 @@ class Timecop(object):
 
     def __init__(self, freeze_timestamp):
         self.freeze_timestamp = freeze_timestamp
-
+    # Store the frozen timestamp
+    # Rememebr: 1297553958
     def __enter__(self):
+        # Replace datetime.datetime with frozen version.
         self.real_datetime = datetime.datetime
         datetime.datetime = self.frozen_datetime()
-
+    # Called when entering with block 
+    # Save the real time 
+    # Replace with fake one
     def __exit__(self, type, value, traceback):
+        # Restore real datetime
         datetime.datetime = self.real_datetime
-
+    # restore the real one
     def frozen_datetime(self):
         class FrozenDateTime(datetime.datetime):
+           # inherits everything from the real datetime
             @classmethod
             def now(cls, **kwargs):
+                # Instead of returning actual current time,
+                # always returns the frozen timestamp.
                 return cls.fromtimestamp(timecop.freeze_timestamp)
-
+    # Always return the frozen time
         timecop = self
+    # So the inner class can access self.freeze_timestamp
+    # so frozenDateTime can access self.freeze_timestamp
         return FrozenDateTime
 
 
 if __name__ == "__main__":
     unittest.main()
+# Only runs when you execure this file directly
+# python test.py "run the tests"
+# import test    "no, just import the classes"
