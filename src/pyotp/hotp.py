@@ -27,6 +27,14 @@ class HOTP(OTP):
         :param name: account name
         :param issuer: issuer
         """
+
+        #   s        The secret key(base 32)     "JBSWY3DPEHPK3PXP"
+        #   digits   Code length                 6
+        #   digest   Hash algorithm             SHA-1
+        #   name     Account name               alice@gmail.com
+        #   issuer   Service name               Github
+        #   initial  Starting counter           0
+        #
         if digest is None:
             digest = hashlib.sha1
         elif digest in [hashlib.md5, hashlib.shake_128]:
@@ -43,6 +51,12 @@ class HOTP(OTP):
         :returns: OTP
         """
         return self.generate_otp(self.initial_count + count)
+    # hotp = HOTP ("JBSWY3DPEHPK3PXP")
+    # hotp.at(0) -> "755224"
+    # hotp.at(1) -> "287082"
+    # hotp.at(2) -> "359152"
+    # The magic happens in generate_otp, which will be reviewed next.
+
 
     def verify(self, otp: str, counter: int) -> bool:
         """
@@ -52,7 +66,14 @@ class HOTP(OTP):
         :param counter: the OTP HMAC counter
         """
         return utils.strings_equal(str(otp), str(self.at(counter)))
-
+    # verify() - Check a Code 
+    # def verify(self, otp: str, counter: int) -> bool:
+    #     return utils.strings_equal(str(otp), str(self.at(counter)))
+    # Compares the provided code against the code should be from that counter
+    # hotp.verify("755224", 0)  # → True (correct code for counter 0)
+    # hotp.verify("755224", 1)  # → False (wrong counter)
+    # hotp.verify("000000", 0)  # → False (wrong code)
+    # Uses "strings_equal()" instead of == to prevent timing attacks
     def provisioning_uri(
         self,
         name: Optional[str] = None,
@@ -60,6 +81,15 @@ class HOTP(OTP):
         issuer_name: Optional[str] = None,
         **kwargs,
     ) -> str:
+    #  Takes all pieces and combined into a URI
+    # hohp = HOTP("SECRET", name="alice", issuer="GitHub")
+    # hotp.provisioning_uri()  
+    # → otpauth://hotp/GitHub:alice?secret=SECRET...
+    # Override for this URI only
+    # hotp.provisioning_uri(name="bob", issuer_name="GitLab")  
+    #  → otpauth://hotp/GitLab:bob?secret=SECRET...
+    # **kwargs allows passing extra parameters (like image for a logo URL)
+    
         """
         Returns the provisioning URI for the OTP.  This can then be
         encoded in a QR Code and used to provision an OTP app like

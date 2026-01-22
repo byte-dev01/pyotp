@@ -13,6 +13,14 @@ class TOTP(OTP):
     Handler for time-based OTP counters.
     """
 
+    #TOTP constructor -> it sets up a new TOTP object when you 
+    # create one. 
+    # totp = pyotp.TOTP("JBSWY3DPEHPK3PXP", digits=6, interval=30)
+    #                          ↑                   ↑         ↑
+    #                          s                   digits   interval
+    #
+    #
+    #
     def __init__(
         self,
         s: str,
@@ -36,8 +44,10 @@ class TOTP(OTP):
             raise ValueError("selected digest function must generate digest size greater than or equals to 18 bytes")
 
         self.interval = interval
+        # Usually 30 seconds 
         super().__init__(s=s, digits=digits, digest=digest, name=name, issuer=issuer)
-
+        # This calls 'OTP._init_()' to set up the rest.
+        # It inherits the OTP class, can use functions in OTP class.
     def at(self, for_time: Union[int, datetime.datetime], counter_offset: int = 0) -> str:
         """
         Accepts either a Unix timestamp integer or a datetime object.
@@ -53,9 +63,12 @@ class TOTP(OTP):
         :param counter_offset: the amount of ticks to add to the time counter
         :returns: OTP value
         """
+        # Accepts either a datatime or unix timestamp. Counter_offset lets you peek 
+        # at previous/next codes.
         if not isinstance(for_time, datetime.datetime):
-            for_time = datetime.datetime.fromtimestamp(int(for_time))
+            for_time = datetime.datetime.fromtimestamp(int(for_time), tz=datetime.timezone.utc)
         return self.generate_otp(self.timecode(for_time) + counter_offset)
+
 
     def now(self) -> str:
         """
@@ -64,7 +77,7 @@ class TOTP(OTP):
         :returns: OTP value
         """
         return self.generate_otp(self.timecode(datetime.datetime.now()))
-
+    # Just calls generate_otp() with current time converted to counter.
     def verify(self, otp: str, for_time: Optional[datetime.datetime] = None, valid_window: int = 0) -> bool:
         """
         Verifies the OTP passed in against the current time OTP.
@@ -84,7 +97,13 @@ class TOTP(OTP):
             return False
 
         return utils.strings_equal(str(otp), str(self.at(for_time)))
-
+    # The valid window handles clock drift:
+    #   totp.verify("482193", valid_window=1)
+    #   valid_window = 1 means check:
+    #       - Previous code (30 sec ago)
+    #       - Current code
+    #       - Next code (30 sec ahead)
+    
     def provisioning_uri(self, name: Optional[str] = None, issuer_name: Optional[str] = None, **kwargs) -> str:
         """
         Returns the provisioning URI for the OTP.  This can then be

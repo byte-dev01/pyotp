@@ -25,6 +25,27 @@ def random_hex(length: int = 40, chars: Sequence[str] = "ABCDEF0123456789") -> s
         raise ValueError("Secrets should be at least 160 bits")
     return random_base32(length=length, chars=chars)
 
+#The URL looks like this:
+#otpauth://totp/FooCorp:alice@example.com?
+#secret=JBSWY3DPEHPK3PXP&issuer=FooCorp&algorithm=SHA256&digits=6&period=30
+#otpauth://totp/FooCorp:alice@example.com?secret=JBSWY3DPEHPK3PXP&issuer=FooCorp
+#─────────┬───┬──────┬─────────────────┬─────────────────────────────────────────
+#         │   │      │                 └── Query parameters (secret, issuer, etc.)
+#         │   │      └── Account name (alice@example.com)  
+#         │   └── Issuer in path (FooCorp)
+#         └── OTP type (totp or hotp)
+#   Step-by-Step
+#   Verify it's an otpauth:// URI
+#   Extract issuer and account name from the path 
+#   Loop through query parameters and collect: secret
+#   algorithm, digits, period (TOTP), counter (HOTP), encoder (Steam)
+#   Validate (digis must be 6/7/8, secret required, issuer must match if specified twice)
+#   Return the right object type: Steam(), TOTP(), or HOTP()
+#
+#   uri = "otpauth://totp/GitHub:rachel?secret=ABC123&digits=6"
+#   otp = parse_uri(uri)
+#   otp.now()  # → "482193" (or whatever the current code is)
+
 
 def parse_uri(uri: str) -> OTP:
     """
@@ -63,7 +84,34 @@ def parse_uri(uri: str) -> OTP:
         otp_data["issuer"] = accountinfo_parts[0]
         otp_data["name"] = accountinfo_parts[1]
 
+
+
+
+    # Given a URI like:
+    # otpauth://totp/GitHub:rachel?secret=ABC123&algorithm=SHA256&digits=6&period=30
+    # The query string is secret=ABC123&algorithm=SHA256&digits=6&period=30
+    # parse_qsl() turns that into a list of tuples:
+    # [("secret", "ABC123"), ("algorithm", "SHA256"), ("digits", "6"), ("period", "30")]
+    #
+    #
     # Parse values
+
+    #The Parameter Mapping
+    #URI Parameter      What Happens          Stored As:
+    #Secret=ABC123      Saved for later      secret = "ABC123"
+    #issuer=Github      Validated against    otp_data["issuer"]
+    #                   path issuer, then 
+    #                   stored 
+    # algorithm=SHA256  Converted to hashlib  otp_data["digest"] = 
+    #                   functions             hashlib.sha256
+    # encoder=steam     Flags Steam mode      encoder = "steam"
+    # digits=6          How many digits       otp_data["digits"] = 6
+    # period=30         TOTP time window(s)   otp_data["interval"] = 30
+    # counter=0         HOTP starting         otp_data["initial_count"] = 0
+    #                   counter
+    #
+    #
+#
     for key, value in parse_qsl(parsed_uri.query):
         if key == "secret":
             secret = value
@@ -90,13 +138,27 @@ def parse_uri(uri: str) -> OTP:
         elif key == "counter":
             otp_data["initial_count"] = int(value)
 
+    # Steam uses 5 alphanumeric chars, so skip digit validation 
     if encoder != "steam":
         if digits is not None and digits not in [6, 7, 8]:
             raise ValueError("Digits may only be 6, 7, or 8")
-
+    # Every OTP needs a secret
     if not secret:
         raise ValueError("No secret found in URI")
 
+    # The Decision Tree.
+    #   Was encoder = 'steam' in the URI?
+    #       YES -> return Steam (secret, **otp_data)
+    #       NO  -> check URI type (netloc)
+    #              -> otpauth://totp/... → return TOTP(secret, **otp_data)
+    #              -> otpauth://hotp/... → return HOTP(secret, **otp_data)
+    #              -> anything else      → raise ValueError
+    #   
+    #   What's **otp_data?
+    #       It unpacks the dictionary as keywork arguments:
+    #           otp_data = {"issuer": "GitHub", "digits": 6, "interval": 30}
+    #       TOTP(secret, **otp_data)
+    #        = TOTP(secret, issuer="GitHub", digits=6, interval=30)
     # Create objects
     if encoder == "steam":
         return contrib.Steam(secret, **otp_data)
@@ -104,5 +166,12 @@ def parse_uri(uri: str) -> OTP:
         return TOTP(secret, **otp_data)
     elif parsed_uri.netloc == "hotp":
         return HOTP(secret, **otp_data)
-
+    # The Difference:
+    #  TOTP = Based on current time (changes every 30 second)
+    #  HOTP = Based on a counter (changes on each use)
+    #  Steam = TOTP variant with alphanumeric output
+    #  
+    #  TOTP = Time-Based One-Time Password
+    #  HOTP = HMAC-based One-Time Password - Server must store a copy
+    #  Similar to TOTP but alphanumeric
     raise ValueError("Not a supported OTP type")
